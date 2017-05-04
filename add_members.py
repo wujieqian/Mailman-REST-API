@@ -86,9 +86,10 @@ def verify_qiyi_email_address(addr):
         False: addr is not @qiyi. 
     """
     if DEBUG is True:
+        #bypass this check.
         return True
 
-    return True if re.match("^.+\\@foo.com", addr) else False
+    return True if re.match("^.+\\@qiyi.com", addr) else False
     
 
 def do_approve(mlist, subs):
@@ -206,7 +207,10 @@ def show_pending(passwd, listname):
     finally:
         mlist.Unlock()
         # only return emails
-        return [i[0] for i in subs]
+        if subs:
+            return [i[0] for i in subs]
+        else:
+            return None
 
         
 def approve_pending(passwd, listname, memlist=None):
@@ -299,7 +303,7 @@ class ApprovePending(Resource):
             print list_data
             list_data = yaml.safe_load(list_data)
             passwd = list_data['passwd']
-            listname = list_data['list']
+            listname = list_data['listname']
 
             if 'members' in list_data:
                 members = list_data['members']
@@ -329,11 +333,12 @@ class ApprovePending(Resource):
 
 def post_wrapper(request, func):
     try:
+        print request.__str__
         list_data = json.dumps(request.get_json(force=True))
         print list_data
         list_data = yaml.safe_load(list_data)
         passwd = list_data['passwd']
-        listname = list_data['list']
+        listname = list_data['listname']
 
         if 'members' in list_data:
             members = list_data['members']
@@ -403,7 +408,7 @@ def test01_do_add_members():
 #
 
 def main():
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='0.0.0.0', debug=DEBUG)
 
 
 if __name__ == '__main__':
