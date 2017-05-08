@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo ./add_members.py
+sudo ./mailmanREST.py

@@ -24,7 +24,7 @@ from flask_restful import reqparse
 from flask_restful import Resource
 
 
-DEBUG = True
+_TEST = os.getenv('MAILMAN_TEST') or 'FALSE'
 
 app = Flask(__name__)
 api = Api(app)
@@ -85,10 +85,8 @@ def verify_qiyi_email_address(addr):
         True: addr is @qiyi.
         False: addr is not @qiyi. 
     """
-    if DEBUG is True:
-        #bypass this check.
-        return True
-
+    if _TEST == 'TRUE':
+        return True if re.match("^.+\\@test.com", mail) else False
     return True if re.match("^.+\\@qiyi.com", addr) else False
     
 
@@ -201,7 +199,7 @@ def show_pending(passwd, listname):
     mlist.Lock()
     try:
         mlist_authenticate(mlist, passwd)
-        print 'num request pending %s' % mlist.NumRequestsPending()
+        #print 'num request pending %s' % mlist.NumRequestsPending()
         subs = do_get_pending_subs(mlist)
 
     finally:
@@ -226,7 +224,6 @@ def approve_pending(passwd, listname, memlist=None):
         print 'error', 'admindb: No such list "%s": %s\n' % (listname, e)
         raise ValueError('No such list %s' %(listname))
 
-
     mlist.Lock()
     try:
         mlist_authenticate(mlist, passwd)
@@ -247,8 +244,7 @@ def approve_pending(passwd, listname, memlist=None):
         mlist.Save()
     finally:
         mlist.Unlock()
-        return approvedList
-
+    return approvedList
 
 #
 # PART 2. External REST API.
@@ -276,7 +272,7 @@ class ShowPending(Resource):
             pendings = show_pending(passwd, listname)
 
         except (KeyError, AssertionError) as e:
-            response = jsonify({"message": 'invalid listname/password'})
+            response = jsonify({"message": 'Please set listname and passwd in request'})
             response.status_code = 400
             return response
 
@@ -290,9 +286,6 @@ class ShowPending(Resource):
         
 
 class ApprovePending(Resource):
-    """
-    TODO:
-    """
     def __init__(self):
         pass
 
@@ -310,7 +303,6 @@ class ApprovePending(Resource):
             else:
                 members = []
             print passwd, listname,members
-            print type(passwd), type(listname), type(members)
 
             print "[BEGIN]: Approval"
             approved = approve_pending(passwd, listname, members)
@@ -325,7 +317,7 @@ class ApprovePending(Resource):
         if approved:
             msg = 'Subscribed: ' + ';'.join(approved)
         else:
-            msg = 'None is accepted. Please submit request on Web first.'
+            msg = 'Mails in request are not pending members. Please submit request on Website first.'
         response = jsonify({"message":msg})
         response.status_code = 201
         return response
@@ -349,12 +341,12 @@ def post_wrapper(request, func):
 
         if members:
             mlist_authenticate(mlist, passwd)
-            #msg = do_add_members(listname, members)
             msg = func(listname, members)
         else:
             msg = 'No email in request list'
 
     except (Errors.MMListError, KeyError, ValueError) as e:
+        print str(e)
         response = jsonify({"message": "list/passwd error"})
         response.status_code = 400
         return response
@@ -389,26 +381,11 @@ api.add_resource(RemoveMem, "/remove")
 
 
 #
-# PART 3. Automation Test
-#
-
-def test01_do_add_members():
-    mem_list = {'test01@foo.com',
-                'test02@foo.com'
-                }
-    try:
-        do_add_members('dummy', mem_list)
-        
-    finally:
-        #cleanup test
-        do_remove_members('dummy', mem_list)
-
-#
-# PART 4. Misc
+# PART 3. Misc
 #
 
 def main():
-    app.run(host='0.0.0.0', debug=DEBUG)
+    app.run(host='0.0.0.0', debug=True)
 
 
 if __name__ == '__main__':

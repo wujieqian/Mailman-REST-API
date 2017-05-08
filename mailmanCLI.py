@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import sys
+import os
 import re
 import requests
 import getopt
@@ -11,28 +12,28 @@ from requests import post
 
 import pdb
 
-SERVER='127.0.0.1'
-PORT=5000
-#PASSWD = None
-
-DEBUG = False
-PASSWD = 'l1admin'
-
+SERVER = os.getenv('MAILMAN_SERVER') or '127.0.0.1'
+PORT = os.getenv('MAILMAN_PORT') or 5000
+PASSWD = os.getenv('MAILMAN_PASSWD')
 
 ACTIONS = ('add', 'remove', 'show-pending', 'approve')
-
+_TEST = os.getenv('MAILMAN_TEST') or 'FALSE'
 
 def check_mail_address(mail):
-    if DEBUG:
-        return True
+    if _TEST == 'TRUE':
+        return True if re.match("^.+\\@test.com", mail) else False
     return True if re.match("^.+\\@qiyi.com", mail) else False
 
 
 def show_usage():
-
-    _str =  '\t'+ '\n\t'.join(ACTIONS)
-    usage = 'mailmanCLI <action> [options] [mails,] listname\n' + \
-            'Here are valid actions:\n' + _str + '\n'
+    usage = """
+mailmanCLI <action> [options] [mails,] listname
+    Here are valid actions:
+        add: add *@qiyi.com members in [mails,] and [-f file]
+        remove: remove *@qiyi.com members in [mails,] and [-f file]
+        show-pending: list members waiting for approval.
+        approve:  if [mails] or [-f file] are null, all pending members will be approved.
+"""
 
     optionArgs ="""
 optional arguments:
@@ -50,14 +51,18 @@ def parseArguments(args):
         pass
 
     try:
+        if not args:
+            raise ArgsException()
         action = args[0]
-        if action not in ACTIONS:
-            raise ArgsException('{0} is not a valid action'.format(action))
+        if action!='-h' and action not in ACTIONS:
+            raise ArgsException('A action must be specified.')
 
-        options, args = getopt.getopt(args[1:], 'hf:')
+        if args[0][0] != '-':
+            args = args[1:]
+
+        options, args = getopt.getopt(args, 'hf:')
         mailFile = None
         printUsage = False
-        pdb.set_trace()
         for o, val in options:
             if o in ('-f'):
                 mailFile = val
@@ -73,22 +78,32 @@ def parseArguments(args):
         if not args:
             raise ArgsException("No listname.")
         
-        mails = args[1:-1]
+        mails = args[:-1]
         listname = args[-1]
-        mails = [m for m in mails if check_mail_address(m)]
+        #mails = [m for m in mails if check_mail_address(m)]
+        valid_mails = []
 
-    except ArgsException as e:
+        for m in mails:
+            if check_mail_address(m):
+                valid_mails.append(m)
+            else:
+                print '{0} is not a valid qiyi.com address'.format(m)
+
+    except Exception as e:
         print str(e)
         show_usage()
         exit(1)
 
-    return action, mailFile, mails, listname
+    return action, mailFile, valid_mails, listname
 
-def get_full_mails(mailFile):
+def get_file_mails(mailFile):
     try:
-
+        mails = []
         with open(mailFile) as f:
             for mail in f:
+                mail = mail.strip()
+                if not mail:
+                    continue
                 if check_mail_address(mail):
                     mails.append(mail)
                 else:
@@ -109,7 +124,7 @@ class sendRequest(object):
         self.listname = listname
         self.members = members
         self.response = None
-
+        self.message = None
         try:
             method = sendRequest.actions[action]
             self._wrap_request()
@@ -119,6 +134,9 @@ class sendRequest(object):
             print str(e)
         except Exception as e:
             print str(e)
+
+    def __str__(self):
+        return self.message or ''
     
     def _wrap_request(self):
         self.headers={
@@ -144,32 +162,36 @@ class sendRequest(object):
     def _get_message(self):
         raw_data = json.dumps(self.response.json())
         data = yaml.safe_load(raw_data)
+        self.message = data['message']
         print data['message']
         print self.response.status_code
 
 
-def main(args):
+def send_request(args):
+    """
+    This function does 3 tasks.
+        1. parse arguments.
+        2. combine member lists from [mails,] and [-f file].
+        3. kick off request to Mailman server.
+    """
     global PASSWD
-    action, mailFile, mails, listname = parseArguments(sys.argv[1:])
+    action, mailFile, mails, listname = parseArguments(args)
 
     mails = list(set(mails))
-    pdb.set_trace()
     if mailFile:
-        mailsFromFile = get_full_mails(mailFile)
-        if mailsFromFile and mails:
-            mails = list(set(mailsFromFile) & set(mails))
+        mailsFromFile = get_file_mails(mailFile)
+        if mailsFromFile:
+            mails = list(set(mailsFromFile) | set(mails))
         
     if PASSWD is None:
         PASSWD = getpass.getpass("Please input your admin/moderator password:")
 
-    sendRequest(action, PASSWD, listname, mails)
-
-
-def test():
-    sendRequest('pending', 'l1admin', 'dummy')
-    sendRequest('add', 'l1admin', 'dummy', ['add_a_test@foo.com','def@foo.com'])
-    sendRequest('remove', 'l1admin', 'dummy', ['add_a_test@foo.com','def@foo.com'])
+    if action in ('add', 'remove', 'approve') and not mails:
+        print 'No mail found'
+        return
+    
+    return sendRequest(action, PASSWD, listname, mails)
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    send_request(sys.argv[1:])
