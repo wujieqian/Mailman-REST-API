@@ -116,7 +116,8 @@ def get_file_mails(mailFile):
 
 
 class sendRequest(object):
-    actions = {'add':post, 'remove':post, 'approve':post, 'pending':get}
+    actions_method = {'add':post, 'remove':post, 'approve':post, 'show-pending':get}
+    actions_url = {'add':'add', 'remove':'remove', 'approve':'approve', 'show-pending':'pending'}
     baseURL="http://{0}:{1}/".format(SERVER, str(PORT))
 
     def __init__(self, action, passwd, listname, members=None):
@@ -126,9 +127,11 @@ class sendRequest(object):
         self.response = None
         self.message = None
         try:
-            method = sendRequest.actions[action]
+            pdb.set_trace()
+            method = sendRequest.actions_method[action]
             self._wrap_request()
-            self._send(method, sendRequest.baseURL+action)
+            self._send(method, sendRequest.baseURL + 
+                               sendRequest.actions_url[action])
             self._get_message()
         except requests.exceptions.ConnectionError as e:
             print str(e)

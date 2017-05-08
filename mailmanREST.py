@@ -197,18 +197,17 @@ def show_pending(passwd, listname):
         raise ValueError('No such list %s' % listname)
 
     mlist.Lock()
+    subs = []
     try:
         mlist_authenticate(mlist, passwd)
         #print 'num request pending %s' % mlist.NumRequestsPending()
         subs = do_get_pending_subs(mlist)
-
     finally:
         mlist.Unlock()
-        # only return emails
-        if subs:
-            return [i[0] for i in subs]
-        else:
-            return None
+    if subs:
+        return [i[0] for i in subs]
+    else:
+        return None
 
         
 def approve_pending(passwd, listname, memlist=None):
@@ -271,8 +270,12 @@ class ShowPending(Resource):
             assert(listname)
             pendings = show_pending(passwd, listname)
 
-        except (KeyError, AssertionError) as e:
+        except KeyError as e:
             response = jsonify({"message": 'Please set listname and passwd in request'})
+            response.status_code = 400
+            return response
+        except ValueError as e:
+            response = jsonify({"message": str(e)})
             response.status_code = 400
             return response
 
@@ -379,10 +382,6 @@ api.add_resource(ApprovePending, "/approve")
 api.add_resource(AddMem, "/add")
 api.add_resource(RemoveMem, "/remove")
 
-
-#
-# PART 3. Misc
-#
 
 def main():
     app.run(host='0.0.0.0', debug=True)
