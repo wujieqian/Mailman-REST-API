@@ -157,7 +157,7 @@ def do_add_members(listname, memberList):
         return msg[0]
     except IOError, e:
         print e
-        return ""
+        return "fatal issue when adding members."
 
 def do_remove_members(listname, memberList):
     """
