@@ -13,7 +13,7 @@ from requests import post
 import pdb
 
 SERVER = os.getenv('MAILMAN_SERVER') or '127.0.0.1'
-PORT = os.getenv('MAILMAN_PORT') or 5000
+PORT = 5000
 PASSWD = os.getenv('MAILMAN_PASSWD')
 
 ACTIONS = ('add', 'remove', 'show-pending', 'approve')
@@ -118,7 +118,7 @@ def get_file_mails(mailFile):
 class sendRequest(object):
     actions_method = {'add':post, 'remove':post, 'approve':post, 'show-pending':get}
     actions_url = {'add':'add', 'remove':'remove', 'approve':'approve', 'show-pending':'pending'}
-    baseURL="http://{0}:{1}/".format(SERVER, str(PORT))
+    baseURL="http://{0}:{1}/api/".format(SERVER, str(PORT))
 
     def __init__(self, action, passwd, listname, members=None):
         self.passwd = passwd
@@ -127,7 +127,6 @@ class sendRequest(object):
         self.response = None
         self.message = None
         try:
-            pdb.set_trace()
             method = sendRequest.actions_method[action]
             self._wrap_request()
             self._send(method, sendRequest.baseURL + 

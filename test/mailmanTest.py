@@ -1,3 +1,5 @@
+import sys
+sys.path.append('mailmanREST/')
 import mailmanCLI as M
 
 """
@@ -62,7 +64,7 @@ def test_003_add_mails_from_both():
     for i in mails:
         assert('Subscribed: {0}'.format(i) in msg)
 
-    M.send_request(remove_args)
+    M.send_request(['remove', 'add_three@test.com', 'dummy'])
 
 
     

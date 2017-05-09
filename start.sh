@@ -1,3 +1,4 @@
 #!/bin/bash
 
-sudo ./mailmanREST.py
+LOG="log/server.log"
+sudo python mailmanREST/mailmanREST.py $LOG

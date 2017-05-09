@@ -6,7 +6,9 @@ import re
 import subprocess
 import json
 import yaml
-
+import logging
+import logging.config
+from logging.handlers import RotatingFileHandler
 import pdb
 
 #Mailman2.1 python lib
@@ -24,10 +26,11 @@ from flask_restful import reqparse
 from flask_restful import Resource
 
 
-_TEST = os.getenv('MAILMAN_TEST') or 'FALSE'
-
 app = Flask(__name__)
 api = Api(app)
+logger = app.logger
+
+_TEST = 'TRUE'
 
 #
 # PART 1. Internal Functions of Processing Mailman Database.
@@ -53,13 +56,13 @@ def do_get_pending_subs(mlist):
     for id in pendingsubs:
         addr = mlist.GetRecord(id)[1]
         byaddrs.setdefault(addr, []).append(id)
-    print byaddrs
+    logger.debug(byaddrs)
     subs = byaddrs.items()
     subs.sort()
 
-    print 'subs %s' % subs
+    logger.debug('subscriptions: %s' % subs)
     for addr, id in subs:
-        print addr, id
+        logger.debug('addr:{0}, id:{1}'.format(addr, id))
 
     return subs
 
@@ -72,7 +75,7 @@ def mlist_authenticate(mlist, passwd):
                                   mm_cfg.AuthListModerator,
                                   mm_cfg.AuthSiteAdmin),
                                   passwd):
-        print 'login fail, password error'
+        logger.warning('login fail, password error')
         raise ValueError('Admin/Moderator password error')
 
 def verify_qiyi_email_address(addr):
@@ -85,8 +88,9 @@ def verify_qiyi_email_address(addr):
         True: addr is @qiyi.
         False: addr is not @qiyi. 
     """
+    pdb.set_trace()
     if _TEST == 'TRUE':
-        return True if re.match("^.+\\@test.com", mail) else False
+        return True if re.match("^.+\\@test.com", addr) else False
     return True if re.match("^.+\\@qiyi.com", addr) else False
     
 
@@ -104,7 +108,6 @@ def do_approve(mlist, subs):
     """
     validMembers= []
     invalidMembers = []
-    print subs
     for i in subs:
         addr = i[0]
         if verify_qiyi_email_address(addr):
@@ -113,13 +116,13 @@ def do_approve(mlist, subs):
             invalidMembers.append(i)
 
     if invalidMembers:
-        print 'These %s are not qiyi.com' % invalidMembers
+        logger.info('These %s are not qiyi.com' % invalidMembers)
+        
 
-    print validMembers
-    print 'Approving...'
+    logger.info('Approving members:{0}'.format(validMembers))
     
     for addr, ids in validMembers:
-        print 'addr id %s, %s' %(addr, ids)
+        logger.debug('addr id %s, %s' %(addr, ids))
         try:
             id = ids[0]
             mlist.HandleRequest(id, mm_cfg.SUBSCRIBE, None, None, None)
@@ -129,7 +132,7 @@ def do_approve(mlist, subs):
             # updated the database 
             continue
 
-    print 'Approval finished'
+    logger.info('Approval finished')
 
     return [i[0] for i in validMembers]
 
@@ -156,7 +159,7 @@ def do_add_members(listname, memberList):
 
         return msg[0]
     except IOError, e:
-        print e
+        logger.warning(str(e))
         return "fatal issue when adding members."
 
 def do_remove_members(listname, memberList):
@@ -166,16 +169,13 @@ def do_remove_members(listname, memberList):
     Args:
         memberList: email address list to be removed.
         listname: mail list
-        
     """
     memstr = '\n'.join(memberList)
     cmd = ['remove_members', '-f', '-']
     cmd.append(listname)
 
     try:
-        print 'cmd =',cmd
         child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-
         msg = child.communicate(memstr)
 
         # don't care ret val.
@@ -193,14 +193,13 @@ def show_pending(passwd, listname):
     try:
         mlist = MailList.MailList(listname, lock=0)
     except Errors.MMListError, e:
-        print 'error', 'admindb: No such list "%s": %s\n' % (listname, e)
+        logger.warning('error', 'admindb: No such list {0}": {1}\n'.formati(listname, e))
         raise ValueError('No such list %s' % listname)
 
     mlist.Lock()
     subs = []
     try:
         mlist_authenticate(mlist, passwd)
-        #print 'num request pending %s' % mlist.NumRequestsPending()
         subs = do_get_pending_subs(mlist)
     finally:
         mlist.Unlock()
@@ -220,14 +219,14 @@ def approve_pending(passwd, listname, memlist=None):
     try:
         mlist = MailList.MailList(listname, lock=0)
     except Errors.MMListError, e:
-        print 'error', 'admindb: No such list "%s": %s\n' % (listname, e)
+        logger.warning('error', 'admindb: No such list "%s": %s\n' % (listname, e))
         raise ValueError('No such list %s' %(listname))
 
     mlist.Lock()
     try:
         mlist_authenticate(mlist, passwd)
 
-        print 'num request pending %s' % mlist.NumRequestsPending()
+        logger.debug('num request pending %s' % mlist.NumRequestsPending())
         subs = do_get_pending_subs(mlist)
 
         # only process specified emails. Or approve all pending emails.
@@ -237,7 +236,7 @@ def approve_pending(passwd, listname, memlist=None):
         if subs:
             approvedList = do_approve(mlist, subs)
         else:
-            print 'No pending email for approval'
+            logger.debug('No acceptable member.')
 
         # apply all changes.
         mlist.Save()
@@ -284,7 +283,7 @@ class ShowPending(Resource):
         else:
             msg = 'No pending mails.'
         response = jsonify({"message": msg})
-        response.status_code = 201
+        response.status_code = 200
         return response 
         
 
@@ -296,7 +295,6 @@ class ApprovePending(Resource):
         """ POST Request URL """
         try:
             list_data = json.dumps(request.get_json(force=True))
-            print list_data
             list_data = yaml.safe_load(list_data)
             passwd = list_data['passwd']
             listname = list_data['listname']
@@ -305,11 +303,10 @@ class ApprovePending(Resource):
                 members = list_data['members']
             else:
                 members = []
-            print passwd, listname,members
 
-            print "[BEGIN]: Approval"
+            logger.debug("[start] approval")
             approved = approve_pending(passwd, listname, members)
-            print "[END]: Approval"
+            logger.debug("[end] approval")
 
         except (KeyError, ValueError) as e:
             response = jsonify({"message": str(e)})
@@ -320,18 +317,18 @@ class ApprovePending(Resource):
         if approved:
             msg = 'Subscribed: ' + ';'.join(approved)
         else:
-            msg = 'Mails in request are not pending members. Please submit request on Website first.'
+            msg = 'Mails in request are not pending/valid members. Please submit request on Website first.'
         response = jsonify({"message":msg})
-        response.status_code = 201
+        response.status_code = 200
         return response
 
 
 def post_wrapper(request, func):
     try:
-        print request.__str__
         list_data = json.dumps(request.get_json(force=True))
-        print list_data
         list_data = yaml.safe_load(list_data)
+
+        logger.info(list_data)
         passwd = list_data['passwd']
         listname = list_data['listname']
 
@@ -349,16 +346,20 @@ def post_wrapper(request, func):
             msg = 'No email in request list'
 
     except (Errors.MMListError, KeyError, ValueError) as e:
-        print str(e)
+        logger.warning(str(e))
         response = jsonify({"message": "list/passwd error"})
         response.status_code = 400
+        return response
+    except Exception as e:
+        logger.error(str(e))
+        response = jsonify({"message": "Fatal internal error"})
+        response.status_code = 500
         return response
 
     # success
     response = jsonify({"message":msg})
-    response.status_code = 201
+    response.status_code = 200
     return response
-    
 
 
 class AddMem(Resource):
@@ -377,15 +378,37 @@ class RemoveMem(Resource):
         return post_wrapper(request, do_remove_members)
         
         
-api.add_resource(ShowPending, "/pending")
-api.add_resource(ApprovePending, "/approve")
-api.add_resource(AddMem, "/add")
-api.add_resource(RemoveMem, "/remove")
+api.add_resource(ShowPending, "/api/pending")
+api.add_resource(ApprovePending, "/api/approve")
+api.add_resource(AddMem, "/api/add")
+api.add_resource(RemoveMem, "/api/remove")
+
+def set_logger(logPath):
+    formatter = logging.Formatter("%(asctime)s - %(name)s - "
+                                  "%(levelname)s - %(message)s")
+
+    file_handler = RotatingFileHandler(logPath, 
+                                        maxBytes=10000, 
+                                        backupCount=1)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler()  
+    console_handler.setLevel(logging.DEBUG)  
+    console_handler.setFormatter(formatter)
+
+    app.logger.addHandler(file_handler) 
+    app.logger.addHandler(console_handler) 
+    
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.DEBUG)
+    log.addHandler(file_handler)
+    log.addHandler(console_handler)
 
 
-def main():
+def main(logPath):
+    set_logger(logPath)
     app.run(host='0.0.0.0', debug=True)
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1])

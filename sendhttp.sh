@@ -1,6 +1,6 @@
 #!/bin/bash
 #wrong arg name
-curl http://localhost:5000/approve -H "Content-Type: application/json" -i -d '{"passwd":"l1admin", "list":"dummy", "members":["abc@foo.com", "def@foo.com"]}' -X POST
+curl http://localhost:5000/approve -H "Content-Type: application/json" -i -d '{"passwd":"l1admin", "listname":"dummy", "members":["abc@foo.com", "def@foo.com"]}' -X POST
 #curl http://localhost:5000/approve -H "Content-Type: application/json" -i -d '{"passwd":"l1admin", "listname":"dummy", "members":["abc@foo.com", "def@foo.com"]}' -X POST
 #curl http://localhost:5000/approve -H "Content-Type: application/json" -i -d '{"passwd":"l1admin", "listname":"dummy", "members":["iii@foo.com", "def@foo.com"]}' -X POST
 #curl http://localhost:5000/approve -H "Content-Type: application/json" -i -d '{"passwd":"l1admin", "listname":"dummy", "members":["add_a_test@foo.com", "def@foo.com"]}' -X POST
