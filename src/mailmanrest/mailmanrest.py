@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import pdb
+import os
 import sys
 import re
 import subprocess
@@ -32,7 +32,7 @@ api = Api(app)
 logger = app.logger
 log_path = '/var/log/mailman/rest.server.log'
 
-_TEST = 'FALSE'
+_TEST = False
 
 #
 # PART 1. Internal Functions of Processing Mailman Database.
@@ -90,7 +90,7 @@ def verify_qiyi_email_address(addr):
         True: addr is @qiyi.
         False: addr is not @qiyi.
     """
-    if _TEST == 'TRUE':
+    if _TEST:
         return True if re.match("^.+\\@test.com", addr) else False
     return True if re.match("^.+\\@qiyi.com", addr) else False
 
@@ -107,34 +107,19 @@ def do_approve(mlist, subs):
         subs: subscribtion list, like:
             [('abcd@qiyi.com', [5])]
     """
-    validMembers = []
-    invalidMembers = []
-    for i in subs:
-        addr = i[0]
-        if verify_qiyi_email_address(addr):
-            validMembers.append(i)
-        else:
-            invalidMembers.append(i)
+    logger.info('Approving members:{0}'.format(subs))
 
-    if invalidMembers:
-        logger.info('These %s are not qiyi.com' % invalidMembers)
-
-    logger.info('Approving members:{0}'.format(validMembers))
-
-    for addr, ids in validMembers:
+    for addr, ids in subs:
         logger.debug('addr id %s, %s' %(addr, ids))
         try:
             id = ids[0]
             mlist.HandleRequest(id, mm_cfg.SUBSCRIBE, None, None, None)
-
         except Errors.LostHeldMessage:
             # It's OK. Exception just means someone else has already 
             # updated the database
             continue
 
     logger.info('Approval finished')
-
-    return [i[0] for i in validMembers]
 
 
 def do_add_members(listname, memberList):
@@ -201,24 +186,25 @@ def subscribe(passwd, listname, member):
         raise ValueError('No such list %s' % listname)
 
     mlist.Lock()
+    password = None
     try:
-	password = Utils.MakeRandomPassword()
-	lang = mlist.preferred_language
-	userdesc = UserDesc(member, None, password, 0, lang)
-	mlist.AddMember(userdesc, None)
-	mlist.Save()
-	return password
+        password = Utils.MakeRandomPassword()
+        lang = mlist.preferred_language
+        userdesc = UserDesc(member, None, password, 0, lang)
+        mlist.AddMember(userdesc, None)
+    except Errors.MMNeedApproval as e:
+        mlist.Save()
     except Exception as e:
-	pdb.set_trace()
-	print str(e)
+	    print str(e)
     finally:
-	mlist.Unlock()
+        mlist.Unlock()
+    return password
 
 def show_pending(passwd, listname):
     try:
         mlist = MailList.MailList(listname, lock=0)
     except Errors.MMListError, e:
-        logger.warning('error', 'admindb: No such list {0}": {1}\n'.format(listname, e))
+        logger.warning('admindb: No such list {0}": {1}\n'.format(listname, e))
         raise ValueError('No such list %s' % listname)
 
     mlist.Lock()
@@ -237,7 +223,7 @@ def show_pending(passwd, listname):
 def approve_pending(passwd, listname, memlist=None):
     """
     Description: if memlist is None, add all pending members, or
-        only add memlist.
+		 only add memlist.
     """
     approvedList = []
 
@@ -257,17 +243,28 @@ def approve_pending(passwd, listname, memlist=None):
         # only process specified emails. Or approve all pending emails.
         if memlist and subs:
             subs = [i for i in subs if i[0] in memlist]
+	
+	# check if member is valid qiyi.com address.
+        valid_members = []
+        invalid_members = []
+        for i in subs:
+            addr = i[0]
+            if verify_qiyi_email_address(addr):
+                valid_members.append(i)
+            else:
+                invalid_members.append(i)
+		logger.info('%s is not a valid @qiyi address' % i[0])
 
-        if subs:
-            approvedList = do_approve(mlist, subs)
+        if valid_members:
+            do_approve(mlist, valid_members)
         else:
-            logger.debug('No acceptable member.')
+            logger.debug('No mail accpeted')
 
         # apply all changes.
         mlist.Save()
     finally:
         mlist.Unlock()
-    return approvedList
+    return [m[0] for m in valid_members], [m[0] for m in invalid_members]
 
 #
 # PART 2. External REST API.
@@ -328,20 +325,22 @@ class ApprovePending(Resource):
                 members = []
 
             logger.debug("[start] approval")
-            approved = approve_pending(passwd, listname, members)
+            approved, not_approved = approve_pending(passwd, listname, members)
             logger.debug("[end] approval")
 
         except (KeyError, ValueError) as e:
+	    # error
             response = jsonify({"message": str(e)})
             response.status_code = 400
             return response
 
         # success
+	msg = ""
         if approved:
-            msg = 'Subscribed: ' + ';'.join(approved)
-        else:
-            msg = 'Mails in request are not pending/valid members. \
-Please submit request on Website first.'
+            msg += 'Subscribed: ' + ';'.join(approved) + '\n'
+        if not_approved:
+            msg += 'Not Approved:' + ';'.join(not_approved) + '\n'
+	    msg += 'Please check address and make sure you have submit request on web'
         response = jsonify({"message":msg})
         response.status_code = 200
         return response
@@ -351,7 +350,6 @@ def post_wrapper(req, func):
     try:
         list_data = json.dumps(req.get_json(force=True))
         list_data = yaml.safe_load(list_data)
-
         logger.info(list_data)
         passwd = list_data['passwd']
         listname = list_data['listname']
@@ -440,5 +438,7 @@ def main():
 
 
 if __name__ == '__main__':
-    #main()
-    subscribe('l1admin', 'dummy', 'wujieqian@qiyi.com')
+    if '-t' in sys.argv:
+	_TEST = True
+    main()
+

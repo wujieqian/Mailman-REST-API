@@ -11,12 +11,12 @@ from requests import get
 from requests import post
 
 
-SERVER = os.getenv('MAILMAN_SERVER') or '127.0.0.1'
-PORT = 5000
-PASSWD = os.getenv('MAILMAN_PASSWD')
+SERVER = os.getenv('MAILMAN_SERVER') or 'dev.qiyi.com'
+PASSWD = os.getenv('MAILMAN_LIST_PASSWD')
 
-ACTIONS = ('add', 'remove', 'show-pending', 'approve')
 _TEST = os.getenv('MAILMAN_TEST') or 'FALSE'
+ACTIONS = ('add', 'remove', 'show-pending', 'approve')
+PORT = 5000
 
 def check_mail_address(mail):
     if _TEST == 'TRUE':
@@ -80,7 +80,6 @@ def parse_arguments(args):
 
         mails = args[:-1]
         listname = args[-1]
-        #mails = [m for m in mails if check_mail_address(m)]
         valid_mails = []
 
         for m in mails:
@@ -164,8 +163,9 @@ class SendRequest(object):
             self.response = method(url, self.data, self.headers)
 
     def _get_message(self):
-        raw_data = json.dumps(self.response.json())
-        data = yaml.safe_load(raw_data)
+        #raw_data = json.dumps(self.response.json())
+        #data = yaml.safe_load(raw_data)
+	data = self.response.json()
         self.message = data['message']
         print data['message']
         print self.response.status_code
