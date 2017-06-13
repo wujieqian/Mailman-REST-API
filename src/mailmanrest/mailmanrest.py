@@ -12,6 +12,7 @@ import yaml
 
 #Mailman2.1 python lib
 sys.path.append('/usr/lib/mailman')
+os.environ['PATH'] = ':'.join([os.getenv('PATH'), '/usr/lib/mailman/bin'])
 
 from Mailman import mm_cfg
 from Mailman import MailList
@@ -76,7 +77,7 @@ def mlist_authenticate(mlist, passwd):
     if not mlist.WebAuthenticate((mm_cfg.AuthListAdmin,
                                   mm_cfg.AuthListModerator,
                                   mm_cfg.AuthSiteAdmin),
-                                 passwd):
+                                  passwd):
         logger.warning('login fail, password error')
         raise ValueError('Admin/Moderator password error')
 
@@ -143,7 +144,7 @@ def do_add_members(listname, memberList):
         child.wait()
 
         return msg[0]
-    except IOError, e:
+    except Exception as e:
         logger.warning(str(e))
         return "fatal issue when adding members."
 
@@ -170,9 +171,9 @@ def do_remove_members(listname, memberList):
             return "Remove Successfully"
         else:
             return msg[0]
-    except IOError, e:
-        print e
-        return "Internal Error"
+    except Exception as e:
+        logger.warning(str(e))
+        return "fatal issue when removing members."
 
 
 def subscribe(passwd, listname, member):
@@ -411,7 +412,7 @@ api.add_resource(RemoveMem, "/api/remove")
 
 
 def set_logger():
-    formatter = logging.Formatter("%(asctime)s - %(name)s - "
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(lineno)d - "
                                   "%(levelname)s - %(message)s")
 
     file_handler = RotatingFileHandler(log_path,

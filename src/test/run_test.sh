@@ -9,7 +9,7 @@
 #
 # env vars that can keep default values.
 #
-MAILMAN_HOME=/var/lib/mailman
+MAILMAN_HOME=/usr/lib/mailman
 MAILMAN_REST_HOME=$(readlink -f $0|xargs dirname|xargs dirname)
 export MAILMAN_TEST='TRUE'
 export MAILMAN_SERVER='127.0.0.1'
@@ -60,8 +60,8 @@ function check_list {
     if [[ $ret = 0 ]] ; then
         info "mail list ${TEST_LIST_NAME} exists"
     else
-        ${UTILS}/newlist -q -a $TEST_LIST_NAME $TEST_LIST_ADMIN \
-	    $MAILMAN_LIST_PASSWD >/dev/null 2>&1
+        ${UTILS}/newlist -q $TEST_LIST_NAME $TEST_LIST_ADMIN \
+        $MAILMAN_LIST_PASSWD >/dev/null 2>&1
         ret=$?
         if [ $ret != 0 ]; then
             fatal "create new list $TEST_LIST_NAME fail"
@@ -78,16 +78,16 @@ function check_list {
 # Check if mailmanrest is running.
 #
 function check_mailmanrest {
-    if [[ $STANDALONE == true ]] && ! pgrep -f mailmanrest >/dev/null; then
-	fatal 'mailmanrest is not running'
+    if [[ $STANDALONE == true ]]; then
+        pgrep -f mailmanrest >/dev/null || fatal 'mailmanrest is not running'
     fi
     
     # run mailmanrest in test mode
     if [[ -f ${MAILMAN_REST_HOME}/mailmanrest/mailmanrest.py ]]; then 
-	pgrep -f mailmanrest >/dev/null && pkill -f mailmanrest
-	sudo python ${MAILMAN_REST_HOME}/mailmanrest/mailmanrest.py -t >/dev/null 2>&1 &
+        pgrep -f mailmanrest >/dev/null && pkill -f mailmanrest
+        sudo python ${MAILMAN_REST_HOME}/mailmanrest/mailmanrest.py -t >/dev/null 2>&1 &
     else
-	fatal 'can not find mailmanrest.py'
+        fatal 'can not find mailmanrest.py'
     fi
 }
 
@@ -112,6 +112,7 @@ function test_startup {
 function test_cleanup {
     ${mailman}/rmlist $TEST_LIST_NAME >/dev/null 2>&1
     [[ $STANDALONE == false ]] && pkill -f mailmanrest
+    rm -rf __pycache__
 }
 
 #
@@ -121,20 +122,26 @@ function run_test {
 
     while getopts s ARGS
     do
-	case $ARGS in
-	s)
-	    STANDALONE=true
-	    ;;	
-	*)
-	    ;;
-	esac
+    case $ARGS in
+        s)
+            STANDALONE=true
+        ;;
+    *)
+        ;;
+    esac
     done
 
     test_startup
     pytest ${MAILMAN_REST_HOME}/test/mailmantest.py
+    ret=$?
+    if (( ret != 0 )) ; then 
+      echo 'TEST fail'
+    else
+      echo 'TEST success'
+    fi
+
     test_cleanup
-    return 0
+    return $res
 }
 
 run_test $@
-
